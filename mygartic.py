@@ -18,27 +18,11 @@ MAINDIR ="./"
 SLEEPCLICK, SLEEPMOVE = 0.01,0.00000001
 stopDrawing = False
 linemode = True
-ordermode = "spiral" # "row", "column", "spiral"
+ordermode = "row" # "row", "column", "spiral"
 
 file = open(MAINDIR+'weights/colorXY1Table.pypickle', 'rb')
 colorXYZTable = pickle.load(file)
 file.close()
-
-def GetPosition(positionname):
-    print(positionname)
-    mouse.wait(LEFT, mouse.DOWN)
-    posi = get_position()
-    print(posi)
-    return posi
-
-def Exit():
-    global stopDrawing
-    stopDrawing = True
-    print("Exiting")
-
-
-# In[ ]:
-
 
 class Color:
     def __init__(self,name,r,g,b,mx,my,mz=-1):
@@ -83,10 +67,18 @@ def getColorPanel(img,maxy,maxx,pLeftTop,pRightBottom):
                 #print("white is at "+str(whiteIndex)+", "+str((x,y)))
     return panelColors,blackIndex,whiteIndex
 
+def GetPosition(positionname):
+    print(positionname)
+    mouse.wait(LEFT, mouse.DOWN)
+    posi = get_position()
+    print(posi)
+    return posi
 
-# In[ ]:
-
-
+def Exit():
+    global stopDrawing
+    stopDrawing = True
+    print("Exiting")
+    
 def clickPen(posi,keyboardtime=0):
     mouse.move(posi[0], posi[1], duration=0)
     time.sleep(SLEEPMOVE)
@@ -94,7 +86,20 @@ def clickPen(posi,keyboardtime=0):
     time.sleep(SLEEPCLICK) 
     for i in range(keyboardtime):
         keyboard.press_and_release('up')
-    
+        
+def detail2pen(detail):
+    return (detail+1)//2
+    '''if 0<=detail<3:
+        return 1
+    elif 3<=detail<5:
+        return 2
+    elif 5<=detail<7:
+        return 3'''
+
+
+# In[ ]:
+
+
 def getImageAndCanvas(relocate,testimg):
     if testimg:
         imgfile = Image.open(MAINDIR+"testimg/"+str(testimg)+".jpg")
@@ -116,15 +121,12 @@ def getImageAndCanvas(relocate,testimg):
     
     return img,(min(xnyn[0],x0y0[0]),min(xnyn[1],x0y0[1]))
 
-
-# In[ ]:
-
-
-def getPixelSets(img,rgbDetail,skeDetail):   
-    xSize, ySize = img.size
-    if rgbDetail:pixRGB = img.load()
-    if skeDetail:pixSKT = ani2sketch(img).load() 
-        
+def getPixelSets(img,rgbDetail,skeDetail):  
+    xSize, ySize = img.size    
+    rgbPixelSet=([],[],[])
+    sketchColorsXYs = []
+    pixRGB = img.load()
+    pixSKT = ani2sketch(img).load() 
     layer1colorsXYs = [[[0 for y in range(ySize)] for x in range(xSize)] for i in panelColors]
     layer2colorsXYs = [[[0 for y in range(ySize)] for x in range(xSize)] for i in panelColors]
     layer3colorsXYs = [[[0 for y in range(ySize)] for x in range(xSize)] for i in panelColors]
@@ -141,12 +143,41 @@ def getPixelSets(img,rgbDetail,skeDetail):
                 if Index2 != -1: 
                     rgbPixelSet[1][Index2][x][y]=1
                 if Index3 != -1: 
-                    rgbPixelSet[2][Index3][x][y]=1
+                    rgbPixelSet[2][Index3][x][y]=1        
             if skeDetail and not x%skeDetail and not y%skeDetail:
                 r,g,b = pixSKT[x, y]
                 if r<240 or g<240 or b<240: #skip white
                     sketchColorsXYs[0][x][y]=1
     return  rgbPixelSet,sketchColorsXYs
+
+def drawSingleColor(isColorXYs,x0y0,step):
+    global linemode,stopDrawing
+    colorXYs = drawOrder(isColorXYs)
+    if linemode:
+        lastx,lasty,ishold = -1,-1,0
+        for (x,y) in colorXYs:
+            if(stopDrawing): 
+                mouse.release()
+                return True
+            if abs(x-lastx) <=step and abs(y-lasty) <=step: 
+                mouse.hold()
+            else: 
+                time.sleep(SLEEPCLICK)
+                mouse.release()
+                ishold=0
+            mouse.move(x0y0[0]+x,x0y0[1]+y, duration=0)
+            time.sleep(SLEEPMOVE)
+            if not ishold:
+                mouse.click()
+                ishold = 1
+            lastx,lasty = x, y
+        time.sleep(SLEEPCLICK)
+        mouse.release()
+    else:
+        for (x,y) in colorXYs:
+            if(stopDrawing): return True
+            clickPen((x0y0[0]+step*x,x0y0[1]+step*y))
+    return False
 
 def drawOrder(colorXYs):
     global ordermode
@@ -183,35 +214,6 @@ def drawOrder(colorXYs):
         order.reverse()
     return order
 
-def drawSingleColor(isColorXYs,x0y0,step):
-    global linemode,stopDrawing
-    colorXYs = drawOrder(isColorXYs)
-    if linemode:
-        lastx,lasty,ishold = -1,-1,0
-        for (x,y) in colorXYs:
-            if(stopDrawing): 
-                mouse.release()
-                return True
-            if abs(x-lastx) <=step and abs(y-lasty) <=step: 
-                mouse.hold()
-            else: 
-                time.sleep(SLEEPCLICK)
-                mouse.release()
-                ishold=0
-            mouse.move(x0y0[0]+x,x0y0[1]+y, duration=0)
-            time.sleep(SLEEPMOVE)
-            if not ishold:
-                mouse.click()
-                ishold = 1
-            lastx,lasty = x, y
-        time.sleep(SLEEPCLICK)
-        mouse.release()
-    else:
-        for (x,y) in colorXYs:
-            if(stopDrawing): return True
-            clickPen((x0y0[0]+x,x0y0[1]+y))
-    return False
-
 def drawColor(testimg,relocate,rgbDetail,skeDetail):
     global stopDrawing    
     rgbpen = detail2pen(rgbDetail)
@@ -226,6 +228,7 @@ def drawColor(testimg,relocate,rgbDetail,skeDetail):
     if rgbDetail:
         stopDrawing = False
         clickPen(pen5)
+        time.sleep(0.01)
         clickPen(pen1,rgbpen)
         # draw alpha 100
         clickPen(alpha100)
@@ -248,6 +251,7 @@ def drawColor(testimg,relocate,rgbDetail,skeDetail):
     if skeDetail:
         stopDrawing = False
         clickPen(pen5)
+        time.sleep(0.01)
         clickPen(pen1,skepen)
         clickPen(alpha100)
         for isColorXYs in sketchColorsXYs:
@@ -259,29 +263,11 @@ def drawColor(testimg,relocate,rgbDetail,skeDetail):
 # In[ ]:
 
 
-def detail2pen(detail):
-    return (detail+1)//2
-    '''if 0<=detail<3:
-        return 1
-    elif 3<=detail<5:
-        return 2
-    elif 5<=detail<7:
-        return 3'''
-
-
-# In[ ]:
-
-
 keyboard.add_hotkey("esc", Exit)
 pLeftTop = GetPosition("mLeftTop")
 pRightBottom = GetPosition("mRightBottom")
 colorPanelImg = Image.open(MAINDIR+"weights/gartic-colors-source-6x3.jpg").convert('RGB')
 panelColors,blackIndex,whiteIndex = getColorPanel(colorPanelImg,6,3,pLeftTop,pRightBottom)
-
-
-# In[ ]:
-
-
 alpha50 = GetPosition("alpha50")
 alpha100 = GetPosition("alpha100")
 pen5 = GetPosition("pen5")
@@ -291,7 +277,6 @@ pen1 = GetPosition("pen1")
 # In[ ]:
 
 
-
 clefttop= GetPosition("clefttop")
 crightbottom = GetPosition("crightbottom")
 
@@ -299,32 +284,24 @@ crightbottom = GetPosition("crightbottom")
 # In[ ]:
 
 
+ordermode = "row"
+while True:
+    input()
+    drawColor(testimg=0,relocate=False,rgbDetail=7,skeDetail=2)
+
+
+# In[ ]:
+
+
+ordermode = "row"
 drawColor(testimg=0,relocate=False,rgbDetail=5,skeDetail=2)
 
 
 # In[ ]:
 
 
-drawColor(testimg=0,relocate=False,rgbDetail=5,skeDetail=0)
-
-
-# In[ ]:
-
-
+ordermode = "spiral"
 drawColor(testimg=0,relocate=False,rgbDetail=0,skeDetail=2)
-
-
-# In[ ]:
-
-
-drawColor(testimg=5,relocate=False,rgbDetail=4,skeDetail=8)
-
-
-# In[ ]:
-
-
-'''linemode = True
-ordermode = "spiral"'''
 
 
 # In[ ]:
