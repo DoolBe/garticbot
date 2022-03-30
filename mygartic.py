@@ -12,17 +12,15 @@ from math import sqrt
 from mouse import LEFT, DOWN, get_position, wait
 from myani2sketch import ani2sketch
 import pickle
+import random
 
 
 MAINDIR ="./"
 SLEEPCLICK, SLEEPMOVE = 0.01,0.00000001
 stopDrawing = False
 linemode = True
-ordermode = "row" # "row", "column", "spiral"
+# OrderMode = "row", "column", "spiral", "random", "nna"
 
-file = open(MAINDIR+'weights/colorXY1Table.pypickle', 'rb')
-colorXYZTable = pickle.load(file)
-file.close()
 
 class Color:
     def __init__(self,name,r,g,b,mx,my,mz=-1):
@@ -71,7 +69,7 @@ def GetPosition(positionname):
     print(positionname)
     mouse.wait(LEFT, mouse.DOWN)
     posi = get_position()
-    print(posi)
+    #print(posi)
     return posi
 
 def Exit():
@@ -135,7 +133,8 @@ def getPixelSets(img,rgbDetail,skeDetail):
     
     for y in range(ySize): 
         for x in range(xSize):
-            if rgbDetail and not x%rgbDetail and not y%rgbDetail:
+            #if rgbDetail and not x%rgbDetail and not y%rgbDetail:  
+            if rgbDetail:
                 r,g,b = pixRGB[x, y]
                 Index1,Index2,Index3 = colorXYZTable[r][g][b]
                 if Index1 != whiteIndex:
@@ -144,43 +143,31 @@ def getPixelSets(img,rgbDetail,skeDetail):
                     rgbPixelSet[1][Index2][x][y]=1
                 if Index3 != -1: 
                     rgbPixelSet[2][Index3][x][y]=1        
-            if skeDetail and not x%skeDetail and not y%skeDetail:
+            #if skeDetail and not x%skeDetail and not y%skeDetail:
+            if skeDetail:
                 r,g,b = pixSKT[x, y]
                 if r<240 or g<240 or b<240: #skip white
                     sketchColorsXYs[0][x][y]=1
     return  rgbPixelSet,sketchColorsXYs
 
-def drawSingleColor(isColorXYs,x0y0,step):
-    global linemode,stopDrawing
-    colorXYs = drawOrder(isColorXYs)
-    if linemode:
-        lastx,lasty,ishold = -1,-1,0
-        for (x,y) in colorXYs:
-            if(stopDrawing): 
-                mouse.release()
-                return True
-            if abs(x-lastx) <=step and abs(y-lasty) <=step: 
-                mouse.hold()
-            else: 
-                time.sleep(SLEEPCLICK)
-                mouse.release()
-                ishold=0
-            mouse.move(x0y0[0]+x,x0y0[1]+y, duration=0)
-            time.sleep(SLEEPMOVE)
-            if not ishold:
-                mouse.click()
-                ishold = 1
-            lastx,lasty = x, y
-        time.sleep(SLEEPCLICK)
-        mouse.release()
-    else:
-        for (x,y) in colorXYs:
-            if(stopDrawing): return True
-            clickPen((x0y0[0]+step*x,x0y0[1]+step*y))
-    return False
 
-def drawOrder(colorXYs):
-    global ordermode
+# In[ ]:
+
+
+def nnaSearchList(x,y):
+    return [(x,y+1),(x+1,y+1),(x+1,y),(x+1,y-1),(x,y-1),(x-1,y-1),(x-1,y),(x-1,y+1)]
+def nna(colorXYs,x,y,xsize,ysize):
+    for (nextx,nexty) in nnaSearchList(x,y):
+        if nextx in range(xsize) and nexty in range(ysize):
+            if colorXYs[nextx][nexty]:
+                for (a,b) in nnaSearchList(x,y):
+                    if a in range(xsize) and b in range(ysize):
+                        colorXYs[a][b] = 0
+                colorXYs[nextx][nexty] = 0
+                return [(nextx,nexty)] + nna(colorXYs,nextx,nexty,xsize,ysize)
+    return []
+    
+def drawOrder(colorXYs, ordermode):
     order=[]
     xsize = len(colorXYs)
     ysize = len(colorXYs[0])
@@ -192,6 +179,11 @@ def drawOrder(colorXYs):
         for y in range(ysize):
             for x in range(xsize):
                 if colorXYs[x][y]: order.append((x,y))
+    if ordermode == "random":
+        for x in range(xsize):
+            for y in range(ysize):
+                if colorXYs[x][y]: order.append((x,y))
+        random.shuffle(order)
     if ordermode == "spiral":
         m,n = xsize,ysize
         k = 0
@@ -212,10 +204,62 @@ def drawOrder(colorXYs):
                     if colorXYs[i][l]: order.append((i,l))
                 l += 1
         order.reverse()
+    if ordermode == "nna":
+        nnaLists1 = []
+        nnaLists2 = []
+        for y in range(ysize):
+            for x in range(xsize):
+                if colorXYs[x][y]: 
+                    colorXYs[x][y] = 0
+                    nnaResult = [(x,y)]+nna(colorXYs,x,y,xsize,ysize)
+                    if len(nnaResult)> 25:
+                        nnaLists1.append(nnaResult)
+                    elif len(nnaResult)> 5:
+                        nnaLists2.append(nnaResult)
+        for nnaResult in nnaLists1:
+            order += nnaResult
+        for nnaResult in nnaLists2:
+            order += nnaResult
     return order
 
-def drawColor(testimg,relocate,rgbDetail,skeDetail):
+
+# In[ ]:
+
+
+def drawSingleColor(isColorXYs,x0y0,step,ordermode):
+    global linemode,stopDrawing
+    colorXYs = drawOrder(isColorXYs, ordermode)
+    if linemode:
+        lastx,lasty,ishold = -1,-1,0
+        for (x,y) in colorXYs:
+            if(stopDrawing): 
+                mouse.release()
+                return True
+            if x%step or y%step: continue  # comment this if in getPixelSets already not x%rgbDetail and not y%rgbDetail
+            if abs(x-lastx) <= (step) and abs(y-lasty) <=(step): 
+                mouse.hold()
+            else: 
+                time.sleep(SLEEPCLICK)
+                mouse.release()
+                ishold=0
+            mouse.move(x0y0[0]+x,x0y0[1]+y, duration=0)
+            time.sleep(SLEEPMOVE)
+            if not ishold:
+                mouse.click()
+                ishold = 1
+            lastx,lasty = x, y
+        time.sleep(SLEEPCLICK)
+        mouse.release()
+    else:
+        for (x,y) in colorXYs:
+            if(stopDrawing): return True
+            clickPen((x0y0[0]+step*x,x0y0[1]+step*y))
+    return False
+
+def drawColor(testimg,relocate,rgbInfo,skeInfo):
     global stopDrawing    
+    rgbDetail,rgbOrder = rgbInfo
+    skeDetail,skeOrder = skeInfo
     rgbpen = detail2pen(rgbDetail)
     skepen = detail2pen(skeDetail)
     img,x0y0 = getImageAndCanvas(relocate,testimg)
@@ -235,18 +279,18 @@ def drawColor(testimg,relocate,rgbDetail,skeDetail):
         for isColorXYs in layer1colorsXYs:
             if(stopDrawing): continue
             clickPen(panelColors[layer1colorsXYs.index(isColorXYs)].xy)
-            stopDrawing = drawSingleColor(isColorXYs,x0y0,rgbDetail)
+            stopDrawing = drawSingleColor(isColorXYs,x0y0,rgbDetail,rgbOrder)
         # draw alpha 50
         clickPen(alpha50)
         for isColorXYs in layer2colorsXYs:
             if(stopDrawing): continue
             clickPen(panelColors[layer2colorsXYs.index(isColorXYs)].xy)
-            stopDrawing = drawSingleColor(isColorXYs,x0y0,rgbDetail)
+            stopDrawing = drawSingleColor(isColorXYs,x0y0,rgbDetail,rgbOrder)
         # draw alpha 50 WHITE 3rd layer
         for isColorXYs in layer3colorsXYs:
             if(stopDrawing): continue
             clickPen(panelColors[layer3colorsXYs.index(isColorXYs)].xy)
-            stopDrawing = drawSingleColor(isColorXYs,x0y0,rgbDetail)
+            stopDrawing = drawSingleColor(isColorXYs,x0y0,rgbDetail,rgbOrder)
             
     if skeDetail:
         stopDrawing = False
@@ -257,11 +301,15 @@ def drawColor(testimg,relocate,rgbDetail,skeDetail):
         for isColorXYs in sketchColorsXYs:
             if(stopDrawing): continue
             clickPen(panelColors[blackIndex].xy)
-            stopDrawing = drawSingleColor(isColorXYs,x0y0,skeDetail)
+            stopDrawing = drawSingleColor(isColorXYs,x0y0,skeDetail,skeOrder)
 
 
 # In[ ]:
 
+
+file = open(MAINDIR+'weights/colorXY1Table.pypickle', 'rb')
+colorXYZTable = pickle.load(file)
+file.close()
 
 keyboard.add_hotkey("esc", Exit)
 pLeftTop = GetPosition("mLeftTop")
@@ -284,24 +332,27 @@ crightbottom = GetPosition("crightbottom")
 # In[ ]:
 
 
-ordermode = "row"
 while True:
     input()
-    drawColor(testimg=0,relocate=False,rgbDetail=7,skeDetail=2)
+    drawColor(testimg=0,relocate=False,rgbInfo=(7,"row"),skeInfo=(2,"spiral"))
 
 
 # In[ ]:
 
 
-ordermode = "row"
-drawColor(testimg=0,relocate=False,rgbDetail=5,skeDetail=2)
+drawColor(testimg=0,relocate=False,rgbInfo=(7,"row"),skeInfo=(2,"spiral"))
 
 
 # In[ ]:
 
 
-ordermode = "spiral"
-drawColor(testimg=0,relocate=False,rgbDetail=0,skeDetail=2)
+drawColor(testimg=0,relocate=False,rgbInfo=(0,"row"),skeInfo=(2,"spiral"))
+
+
+# In[ ]:
+
+
+
 
 
 # In[ ]:
